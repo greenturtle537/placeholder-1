@@ -25,13 +25,57 @@
             font-family: Arial, sans-serif;
             z-index: 1000;
         }
+        
+        /* Debug position tracker */
+        #debug-position {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            border-radius: 5px;
+            z-index: 9999;
+            display: none; /* Hidden by default */
+            min-width: 200px;
+        }
+        
+        #debug-position h4 {
+            margin: 0 0 8px 0;
+            color: #ffffff;
+            font-size: 14px;
+        }
+        
+        #debug-position .coord-line {
+            margin: 2px 0;
+            font-weight: bold;
+        }
+        
+        #debug-position .debug-info {
+            margin-top: 8px;
+            color: #888;
+            font-size: 10px;
+        }
     </style>
 </head>
 <body>
     <!-- Container for WebGL error messages -->
     <div id="container"></div>
     
-    <!-- Your main code -->
+        <!-- Debug position tracker -->
+        <div id="debug-position">
+            <h4>Debug Position</h4>
+            <div class="coord-line">X: <span id="pos-x">0.00</span></div>
+            <div class="coord-line">Y: <span id="pos-y">0.00</span></div>
+            <div class="coord-line">Z: <span id="pos-z">0.00</span></div>
+            <div class="debug-info">
+                <div>Mode: <span id="camera-mode">FPS</span></div>
+                <div>Colliders: <span id="collision-count">0</span></div>
+                <div>Active: <span id="active-colliders">0</span></div>
+            </div>
+        </div>    <!-- Your main code -->
     <script src="main.js" type="module"></script>
 </body>
 </html>

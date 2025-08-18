@@ -4,8 +4,6 @@ import { ResourceManager } from './resource-manager.js';
 import { ParkingLot } from '/public/stages/parking-lot.js';
 import { TexturePalette } from '/public/objects/texture-palette.js';
 import { Skybox } from '/public/objects/skybox.js';
-import { RenderFog } from './public/objects/render-fog.js';
-
 
 export class LevelGenerator {
     constructor() {
@@ -14,11 +12,6 @@ export class LevelGenerator {
         
         // Create texture generator
         this.textureGenerator = new TextureGenerator();
-        
-        // Generate shared textures for 90s office aesthetic
-        const wallTexture = this.textureGenerator.generateWallTexture('stripes', 'nineties');
-        const floorTexture = this.textureGenerator.generateFloorTexture();
-        const ceilingTexture = this.textureGenerator.generateCeilingTexture();
         
     }
     
@@ -56,7 +49,7 @@ export class LevelGenerator {
         // Add the texture palette to the level group
         levelGroup.add(texturePalette);
         
-        levelGroup.position.set(0, 0, 0);
+        levelGroup.userData.startPosition = new THREE.Vector3(0, 5, 0);
 
         return levelGroup;
     }

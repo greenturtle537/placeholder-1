@@ -11,6 +11,11 @@ import { ResourceManager } from './resource-manager.js';
 window.USETEXTURECACHE = false;
 Window.TEXTURECACHESIZE = 256; //Do not go past 2048.
 
+// Debug flags
+window.DEBUG_POSITION_TRACKER = true;  // Show position tracker UI
+window.DEBUG_COLLISION_MESHES = false;  // Show green collision boxes
+window.DEBUG_PLAYER_MESH = false;       // Show red player collision cylinder
+
 // Key mappings
 const KEYS = {
     a: 65,
@@ -249,7 +254,7 @@ class FirstPersonCamera {
 
         // Update collision system with new player position, only in FPS mode
         if (this.collisionSystem_ && !this.freeflyMode_) {
-            this.collisionSystem_.updatePlayerPosition(this.camera_.position);
+            this.collisionSystem_.updatePlayerPosition(this.camera_.position, this.freeflyMode_);
         }
     }
 
@@ -394,7 +399,7 @@ class threejsdemo {
                 // Create level generator instance
                 this.levelGenerator = new LevelGenerator();
                 
-                // Create collision system
+                // Create collision system with debug flags
                 this.collisionSystem = new CollisionSystem(this.scene);
                 
                 // For performance tracking
@@ -419,9 +424,9 @@ class threejsdemo {
                 // Debug mode variables
                 this.debugModeActive = false;
                 this.qKeyPressed = false;
-                this.startPosition = new THREE.Vector3(0, 5, 0); // Default start position
                 
-                this.fpsCamera.translation_.copy(this.startPosition);
+                // Initialize debug position tracker
+                this.setupDebugPositionTracker();
                 
                 // Load and generate the level
                 this.loadLevel('/public/levels/level1.json');
@@ -442,13 +447,9 @@ class threejsdemo {
                 
                         // Generate level from JSON
                         const level = await this.levelGenerator.loadLevel(levelFile);
+
                         this.scene.add(level);
                         this.currentLevel = level;
-                        
-                        // Connect spatial grid from level generator to collision system
-                        if (level.userData.spatialGrid) {
-                                this.collisionSystem.setSpatialGrid(level.userData.spatialGrid);
-                        }
                         
                         // Set player at starting position
                         if (level.userData.startPosition) {
@@ -456,17 +457,17 @@ class threejsdemo {
                                 this.fpsCamera.translation_.copy(level.userData.startPosition);
                                 
                                 // Store starting position for debug mode respawn
-                                this.startPosition.copy(level.userData.startPosition);
+                                this.startPosition = level.userData.startPosition.clone();
                                 
                                 // Create player collider
                                 this.collisionSystem.createPlayerCollider(level.userData.startPosition);
                         }
                         
-                        // Create wall colliders from level
+                        // Create colliders from level
                         this.setupColliders(level);
                         
-                        // Store goal position for collision detection
-                        this.goalPosition = level.userData.goalPosition;
+                        // Log collision statistics
+                        this.collisionSystem.logCollisionStats();
                         
                         // Start animation loop if not already running
                         if (this.previousRAF === null) {
@@ -479,9 +480,12 @@ class threejsdemo {
         
         setupColliders(levelGroup) {
                 levelGroup.traverse((object) => {
-                        // Only add colliders for wall objects
-                        if (object.isMesh && object.name !== 'floor' && object.name !== 'ceiling') {
-                                this.collisionSystem.addWallCollider(object);
+                        // Add colliders for mesh objects, but skip those marked as non-collidable
+                        if (object.isMesh && !object.userData.noCollision) {
+                                this.collisionSystem.addCollider(object);
+                        } else if (object.isMesh && object.userData.noCollision) {
+                                // Log skipped objects for debugging
+                                console.log(`Skipping collision for ${object.userData.reason || 'unmarked'} object`);
                         }
                 });
         }
@@ -493,6 +497,41 @@ class threejsdemo {
                 // Add basic lighting if no level is loaded yet
                 const ambient = new THREE.AmbientLight(0xffffff, 0.5);
                 this.scene.add(ambient);
+        }
+        
+        setupDebugPositionTracker() {
+                // Get debug elements
+                this.debugPositionElement = document.getElementById('debug-position');
+                this.posXElement = document.getElementById('pos-x');
+                this.posYElement = document.getElementById('pos-y');
+                this.posZElement = document.getElementById('pos-z');
+                this.cameraModeElement = document.getElementById('camera-mode');
+                this.collisionCountElement = document.getElementById('collision-count');
+                this.activeCollidersElement = document.getElementById('active-colliders');
+                
+                // Show/hide based on debug flag
+                if (window.DEBUG_POSITION_TRACKER) {
+                        this.debugPositionElement.style.display = 'block';
+                }
+        }
+        
+        updateDebugPositionTracker() {
+                if (!window.DEBUG_POSITION_TRACKER || !this.debugPositionElement) return;
+                
+                // Update position display
+                const pos = this.camera.position;
+                this.posXElement.textContent = pos.x.toFixed(2);
+                this.posYElement.textContent = pos.y.toFixed(2);
+                this.posZElement.textContent = pos.z.toFixed(2);
+                
+                // Update camera mode
+                this.cameraModeElement.textContent = this.debugModeActive ? 'Freefly' : 'FPS';
+                
+                // Update collision info
+                if (this.collisionSystem) {
+                        this.collisionCountElement.textContent = this.collisionSystem.lastFrameCollisionChecks.toString();
+                        this.activeCollidersElement.textContent = this.collisionSystem.colliders.length.toString();
+                }
         }
         
         checkGoalReached() {
@@ -567,6 +606,9 @@ class threejsdemo {
                         
                         // Update stats
                         this.stats.update();
+                        
+                        // Update debug position tracker
+                        this.updateDebugPositionTracker();
                         
                         // Render the scene
                         this.renderer.render(this.scene, this.camera);

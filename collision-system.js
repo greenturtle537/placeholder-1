@@ -10,22 +10,28 @@ export class CollisionSystem {
         this.playerRadius = 0.5; // Player collision radius
         this.playerHeight = 1.8; // Player height (approx 6 feet)
         
-        // Collision optimization settings
-        this.spatialGrid = null;
-        this.maxCheckDistance = 5; // Only check collisions within this distance
-        this.activeColliders = new Set(); // Colliders that are currently active
+        // Collision optimization settings - removed spatial grid for global detection
         
-        // For debugging
-        this.debug = false;
+        // For debugging - check window flags
+        this.debug = true; // Enable debug mode to visualize collision boxes
         this.collisionHelpers = new THREE.Group();
         this.collisionHelpers.name = "CollisionHelpers";
-        if (this.debug) {
-            this.scene.add(this.collisionHelpers);
-        }
+        
+        // Always add helpers group, but visibility will be controlled by flags
+        this.scene.add(this.collisionHelpers);
         
         // Performance metrics
         this.lastFrameCollisionChecks = 0;
         this.totalCollisionChecks = 0;
+        
+        // Statistics
+        this.stats = {
+            totalMeshesProcessed: 0,
+            collidersAdded: 0,
+            skippedUserData: 0,
+            skippedTooSmall: 0,
+            skippedTooLarge: 0
+        };
     }
     
     /**
@@ -39,8 +45,8 @@ export class CollisionSystem {
             height: this.playerHeight
         };
         
-        // Add visual debug helper for player collider
-        if (this.debug) {
+        // Add visual debug helper for player collider - check window flag
+        if (this.debug && window.DEBUG_PLAYER_MESH) {
             const geometry = new THREE.CylinderGeometry(
                 this.playerRadius, 
                 this.playerRadius, 
@@ -59,25 +65,53 @@ export class CollisionSystem {
     }
     
     /**
-     * Add a wall collider from a mesh object
-     * @param {THREE.Mesh} mesh - Wall mesh to add as collider
+     * Add a collider from a mesh object
+     * @param {THREE.Mesh} mesh - Mesh to add as collider
      */
-    addWallCollider(mesh) {
-        // Get the position and size from mesh
+    addCollider(mesh) {
+        this.stats.totalMeshesProcessed++;
+        
+        // Check userData for explicit collision exclusion
+        if (mesh.userData.noCollision) {
+            this.stats.skippedUserData++;
+            console.log(`Skipping collision for mesh: ${mesh.userData.reason || 'userData.noCollision = true'}`);
+            return;
+        }
+        
+        // Get the bounding box in world coordinates
         const box = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
         box.getSize(size);
+        box.getCenter(center);
+        
+        // Filter out objects based on size
+        const minSize = 0.1; // Objects smaller than 10cm on any axis
+        const maxSize = 500;  // Objects larger than 500 units on any axis
+        
+        if (size.x < minSize || size.y < minSize || size.z < minSize) {
+            this.stats.skippedTooSmall++;
+            console.log(`Skipping collision for too small object (${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)})`);
+            return;
+        }
+        
+        if (size.x > maxSize || size.y > maxSize || size.z > maxSize) {
+            this.stats.skippedTooLarge++;
+            console.log(`Skipping collision for too large object (${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)})`);
+            return;
+        }
         
         const collider = {
-            position: mesh.position.clone(),
+            position: center, // Use world center position
             size: size,
             mesh: mesh // Store reference to the mesh
         };
         
         this.colliders.push(collider);
+        this.stats.collidersAdded++;
         
-        // Add visual debug helper for wall collider
-        if (this.debug) {
+        // Add visual debug helper for collider - check window flag
+        if (this.debug && window.DEBUG_COLLISION_MESHES) {
             const helper = new THREE.Box3Helper(box, 0x00ff00);
             this.collisionHelpers.add(helper);
         }
@@ -86,28 +120,23 @@ export class CollisionSystem {
     /**
      * Update player collider position
      * @param {THREE.Vector3} position - New player position
+     * @param {boolean} isFreeflyMode - Whether the player is in freefly debug mode
      */
-    updatePlayerPosition(position) {
+    updatePlayerPosition(position, isFreeflyMode = false) {
         if (!this.playerCollider) return;
-        
+
         this.playerCollider.position.copy(position);
+
         
-        // Update debug helper if it exists
-        if (this.debug && this.playerHelper) {
+        // Update debug helper if it exists, but only in FPS mode (not freefly) and if flag is enabled
+        if (this.debug && this.playerHelper && !isFreeflyMode && window.DEBUG_PLAYER_MESH) {
             this.playerHelper.position.copy(position);
         }
     }
     
-    /**
-     * Set the spatial hash grid for optimized collision detection
-     * @param {SpatialHashGrid} grid - The spatial grid
-     */
-    setSpatialGrid(grid) {
-        this.spatialGrid = grid;
-    }
     
     /**
-     * Check for collisions with walls and adjust player position
+     * Check for collisions and adjust player position
      * @param {THREE.Vector3} playerPosition - Current player position
      * @param {THREE.Vector3} proposedPosition - Proposed new position after movement
      * @returns {THREE.Vector3} Adjusted position after collision resolution
@@ -121,31 +150,8 @@ export class CollisionSystem {
         // Reset collision check count for this frame
         this.lastFrameCollisionChecks = 0;
         
-        // Determine which colliders to check based on spatial grid
-        let collidersToCheck = this.colliders;
-        
-        if (this.spatialGrid) {
-            // Only check nearby colliders using spatial grid
-            this.activeColliders.clear();
-            const nearbyObjects = this.spatialGrid.findNearbyObjects(
-                proposedPosition, 
-                this.maxCheckDistance
-            );
-            
-            // Filter for only collider objects
-            for (const obj of nearbyObjects) {
-                // Find the matching collider from our colliders array (if it exists)
-                const matchingCollider = this.colliders.find(c => c.mesh === obj);
-                if (matchingCollider) {
-                    this.activeColliders.add(matchingCollider);
-                }
-            }
-            
-            collidersToCheck = Array.from(this.activeColliders);
-        }
-        
-        // Check each active wall collider
-        for (const collider of collidersToCheck) {
+        // Check all colliders globally
+        for (const collider of this.colliders) {
             this.lastFrameCollisionChecks++;
             this.totalCollisionChecks++;
             
@@ -237,10 +243,9 @@ export class CollisionSystem {
      */
     extractCollidersFromLevel(levelGroup) {
         levelGroup.traverse((object) => {
-            // Only add colliders for walls (not floor, ceiling, etc.)
-            if (object.isMesh && object.name !== 'floor' && 
-                object.name !== 'ceiling') {
-                this.addWallCollider(object);
+            // Add colliders for all mesh objects
+            if (object.isMesh) {
+                this.addCollider(object);
             }
         });
     }
@@ -255,5 +260,55 @@ export class CollisionSystem {
         if (this.debug) {
             this.collisionHelpers.clear();
         }
+        
+        // Reset statistics
+        this.stats = {
+            totalMeshesProcessed: 0,
+            collidersAdded: 0,
+            skippedUserData: 0,
+            skippedTooSmall: 0,
+            skippedTooLarge: 0
+        };
+    }
+    
+    /**
+     * Log collision system statistics
+     */
+    logCollisionStats() {
+        console.log('=== Collision System Statistics ===');
+        console.log(`Total meshes processed: ${this.stats.totalMeshesProcessed}`);
+        console.log(`Colliders added: ${this.stats.collidersAdded}`);
+        console.log(`Skipped (userData): ${this.stats.skippedUserData}`);
+        console.log(`Skipped (too small): ${this.stats.skippedTooSmall}`);
+        console.log(`Skipped (too large): ${this.stats.skippedTooLarge}`);
+        console.log('=====================================');
+    }
+    
+    /**
+     * Update debug mesh visibility based on window flags
+     */
+    updateDebugVisibility() {
+        if (!this.collisionHelpers) return;
+        
+        // Update collision mesh visibility
+        this.collisionHelpers.children.forEach(child => {
+            if (child instanceof THREE.Box3Helper) {
+                child.visible = window.DEBUG_COLLISION_MESHES;
+            } else if (child === this.playerHelper) {
+                child.visible = window.DEBUG_PLAYER_MESH;
+            }
+        });
+    }
+    
+    /**
+     * Get debug statistics for display
+     */
+    getDebugStats() {
+        return {
+            colliders: this.colliders.length,
+            lastFrameChecks: this.lastFrameCollisionChecks,
+            totalChecks: this.totalCollisionChecks,
+            playerPosition: this.playerCollider ? this.playerCollider.position : null
+        };
     }
 }
