@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { TextureGenerator } from '/texture-generator.js';
 
 export class TexturePalette {

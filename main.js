@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import WebGL from 'three/addons/capabilities/WebGL.js';
+import Stats from 'three/stats';
 import { LevelGenerator } from './level-generator.js';
 import { CollisionSystem } from './collision-system.js';
 import { ResourceManager } from './resource-manager.js';
