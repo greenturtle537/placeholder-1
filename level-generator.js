@@ -23,23 +23,23 @@ export class LevelGenerator {
                 throw new Error(`Failed to load level: ${response.status} ${response.statusText}`);
             }
             const levelData = await response.json();
-            return this.generateLevel(levelData);
+            return await this.generateLevel(levelData);
         } catch (error) {
             console.error("Error loading level:", error);
             throw error;
         }
     }
 
-    generateLevel(levelData) {
-        const texturePalette = new TexturePalette(
+    async generateLevel(levelData) {
+        const texturePalette = await new TexturePalette(
             'floor',
-            'cloudy',
+            'backdrop',
             'ceiling',
             'asphalt'
         );
         
         const levelGroup = new ParkingLot();
-        const skybox = new Skybox();
+        const skybox = await new Skybox();
 
         // Add skybox to the level group
         levelGroup.add(skybox);

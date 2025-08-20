@@ -12,14 +12,14 @@ export class TexturePalette {
         return this.createTexturePalette();
     }
 
-    createTexturePalette() {
+    async createTexturePalette() {
         const group = new THREE.Group();
 
-        // Generate textures using the TextureGenerator
-        const quad1 = this.textureGenerator.generateTexture(this.texture1);
-        const quad2 = this.textureGenerator.generateTexture(this.texture2);
-        const quad3 = this.textureGenerator.generateTexture(this.texture3);
-        const quad4 = this.textureGenerator.generateTexture(this.texture4);
+        // Generate textures using the TextureGenerator (all async to handle backdrop)
+        const quad1 = await this.textureGenerator.generateTexture(this.texture1);
+        const quad2 = await this.textureGenerator.generateTexture(this.texture2);
+        const quad3 = await this.textureGenerator.generateTexture(this.texture3);
+        const quad4 = await this.textureGenerator.generateTexture(this.texture4);
 
         // Create quads for each texture
         const quadGeometry = new THREE.PlaneGeometry(1, 1);

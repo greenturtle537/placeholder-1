@@ -9,7 +9,7 @@ import { ResourceManager } from './resource-manager.js';
 
 // Performance variables
 window.USETEXTURECACHE = false;
-Window.TEXTURECACHESIZE = 256; //Do not go past 2048.
+Window.TEXTURECACHESIZE = 2048; //Do not go past 2048.
 
 // Debug flags
 window.DEBUG_POSITION_TRACKER = true;  // Show position tracker UI
@@ -177,8 +177,8 @@ class FirstPersonCamera {
         // Speed control for freefly mode
         this.freeflySpeedMultiplier_ = 1.0;
         this.minSpeedMultiplier_ = 0.1;
-        this.maxSpeedMultiplier_ = 10.0;
-        this.speedIncrement_ = 0.2;
+        this.maxSpeedMultiplier_ = 1000.0;
+        this.speedIncrement_ = 1;
         this.plusKeyPressed_ = false;
         this.minusKeyPressed_ = false;
     }
@@ -188,7 +188,7 @@ class FirstPersonCamera {
         this.freeflyMode_ = enabled;
         // Reset speed multiplier when entering freefly mode
         if (enabled) {
-            this.freeflySpeedMultiplier_ = 1.0;
+            this.freeflySpeedMultiplier_ = 10.0;
             console.log("Freefly speed: 1.0x (use +/- keys to adjust)");
         }
     }

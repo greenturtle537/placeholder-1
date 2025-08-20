@@ -61,11 +61,19 @@ export class TextureGenerator {
                 "colors": {
                     "primary": '#bebebeff'
                 }
+            },
+            "backdrop": {
+                "styles": ['backdrop'],
+                "colors": {
+                    "primary": '#87CEEB', // Sky blue background
+                    "secondary": '#ffffff'
+                },
+                "depth": 3 // Default depth level
             }
         };
     }
 
-    generateTexture(name, styles, colors) {
+    generateTexture(name, styles, colors, options = {}) {
         // If only name is passed, try to get preset data
         if (typeof name === 'string' && !styles && !colors) {
             const preset = this.presetTextures[name];
@@ -73,6 +81,13 @@ export class TextureGenerator {
                 styles = preset.styles;
                 colors = preset.colors;
                 name = [name]; // Convert to array for consistency
+                // Merge preset options with passed options
+                options = { ...preset, ...options };
+                
+                // Handle backdrop specially since it requires async processing
+                if (styles.includes('backdrop')) {
+                    return this.generateBackdropTexture(colors, options.depth || 3);
+                }
             } else {
                 console.warn(`No preset found for: ${name}`);
                 name = [name];
@@ -86,7 +101,11 @@ export class TextureGenerator {
             name = [name];
         }
         
-        const textureKey = `${name.join('_')}_${JSON.stringify(colors)}_${styles}`;
+        // Only include options in cache key if they contain meaningful data
+        let textureKey = `${name.join('_')}_${JSON.stringify(colors)}_${styles}`;
+        if (options && Object.keys(options).length > 0) {
+            textureKey += `_${JSON.stringify(options)}`;
+        }
         
         console.log(`Requesting texture: ${textureKey}`);
 
@@ -97,7 +116,7 @@ export class TextureGenerator {
             canvas = TextureGenerator.#canvasCache[textureKey];
         } else {
             console.log(`Generating new texture canvas: ${textureKey}`);
-            canvas = this.createTextureCanvas(styles, colors);
+            canvas = this.createTextureCanvas(styles, colors, options);
             // Store only the canvas in the cache
             TextureGenerator.#canvasCache[textureKey] = canvas;
         }
@@ -114,7 +133,52 @@ export class TextureGenerator {
         return texture;
     }
 
-    createTextureCanvas(styles, colors) {
+    async generateBackdropTexture(colors, depth = 3) {
+        const textureKey = `backdrop_${JSON.stringify(colors)}_${depth}`;
+        
+        console.log(`Requesting backdrop texture: ${textureKey}`);
+
+        // Get or create the canvas
+        let canvas;
+        if (TextureGenerator.#canvasCache[textureKey]) {
+            console.log(`Using cached backdrop texture canvas: ${textureKey}`);
+            canvas = TextureGenerator.#canvasCache[textureKey];
+        } else {
+            console.log(`Generating new backdrop texture canvas: ${textureKey}`);
+            canvas = await this.createBackdropCanvas(colors, depth);
+            // Store only the canvas in the cache
+            TextureGenerator.#canvasCache[textureKey] = canvas;
+        }
+        
+        // Create a new texture from the canvas (so settings aren't shared)
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(2, 2); // Repeat the texture
+        texture.generateMipmaps = true;
+        texture.minFilter = THREE.LinearMipMapLinearFilter;
+        texture.needsUpdate = true;
+        
+        return texture;
+    }
+
+    async createBackdropCanvas(colors, depth = 3) {
+        const canvas = document.createElement('canvas');
+        canvas.width = this.textureSize;
+        canvas.height = this.textureSize;
+        
+        const ctx = canvas.getContext('2d');
+        
+        // Generate backdrop
+        await this.generateBackdrop(ctx, colors, depth);
+        
+        // Add subtle noise overlay to all textures for realism
+        this.addNoiseOverlay(ctx, 0.0001);
+        
+        return canvas;
+    }
+
+    createTextureCanvas(styles, colors, options = {}) {
         const canvas = document.createElement('canvas');
         canvas.width = this.textureSize;
         canvas.height = this.textureSize;
@@ -126,7 +190,7 @@ export class TextureGenerator {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
         // Apply styles
-        styles.forEach(style => {
+        for (const style of styles) {
             switch (style) {
                 case 'stripes':
                     this.generateStripes(ctx, colors);
@@ -149,7 +213,7 @@ export class TextureGenerator {
                 default:
                     console.warn(`Unknown style: ${style}`);
             }
-        });
+        }
         
         // Add subtle noise overlay to all textures for realism
         this.addNoiseOverlay(ctx, 0.0001);
@@ -331,6 +395,108 @@ export class TextureGenerator {
         
         // Add subtle noise for carpet texture
         this.addNoiseOverlay(ctx, 0.005);
+    }
+
+    async generateBackdrop(ctx, colors, depth = 3) {
+        const primaryColor = colors.primary || '#87CEEB'; // Sky blue
+        
+        // Fill with background color (sky)
+        ctx.fillStyle = primaryColor;
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        
+        // Load all tree images
+        const treeImages = await this.loadTreeImages();
+        if (treeImages.length === 0) {
+            console.warn('No tree images could be loaded');
+            return;
+        }
+        
+        // Calculate tree size based on depth (higher depth = smaller trees)
+        const treeScale = Math.max(0.2, 1.0 - (depth - 1) * 0.15); // Scale from 1.0 down to 0.2
+        const baseTreeWidth = Math.floor(this.textureSize * 0.15 * treeScale);
+        const baseTreeHeight = Math.floor(this.textureSize * 0.23 * treeScale);
+        
+        // Calculate loose grid dimensions with spacing variations
+        const spacingVariation = 0.4; // 40% spacing variation
+        const overlapFactor = 0.3; // Allow 30% overlap
+        
+        const avgSpacingX = baseTreeWidth * (1 - overlapFactor);
+        const avgSpacingY = baseTreeHeight * (1 - overlapFactor);
+        
+        const cols = Math.floor(ctx.canvas.width / avgSpacingX);
+        const rows = Math.floor(ctx.canvas.height / avgSpacingY);
+        
+        // Place trees with varied spacing and limited overlap
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+                // Base grid position
+                const baseX = col * avgSpacingX;
+                const baseY = row * avgSpacingY;
+                
+                // Add random spacing variation
+                const xVariation = (Math.random() - 0.5) * avgSpacingX * spacingVariation;
+                const yVariation = (Math.random() - 0.5) * avgSpacingY * spacingVariation;
+                
+                const x = Math.max(0, Math.min(baseX + xVariation, ctx.canvas.width - baseTreeWidth));
+                const y = Math.max(0, Math.min(baseY + yVariation, ctx.canvas.height - baseTreeHeight));
+                
+                // Vary individual tree size slightly for more natural look
+                const sizeVariation = 0.8 + (Math.random() * 0.4); // 80% to 120% of base size
+                const treeWidth = Math.floor(baseTreeWidth * sizeVariation);
+                const treeHeight = Math.floor(baseTreeHeight * sizeVariation);
+                
+                // Select random tree image
+                const treeImage = treeImages[Math.floor(Math.random() * treeImages.length)];
+                
+                // Draw the tree
+                this.drawTree(ctx, treeImage, x, y, treeWidth, treeHeight);
+            }
+        }
+    }
+    
+    async loadTreeImages() {
+        const treeImages = [];
+        const imagePromises = [];
+        
+        // Load all tree images (tree_1.png through tree_10.png)
+        for (let i = 1; i <= 10; i++) {
+            const img = new Image();
+            const promise = new Promise((resolve, reject) => {
+                img.onload = () => resolve(img);
+                img.onerror = () => {
+                    console.warn(`Failed to load tree_${i}.png`);
+                    resolve(null); // Resolve with null instead of rejecting
+                };
+            });
+            img.src = `public/backdrop/tree_${i}.png`;
+            imagePromises.push(promise);
+        }
+        
+        const results = await Promise.all(imagePromises);
+        return results.filter(img => img !== null);
+    }
+    
+    drawTree(ctx, treeImage, x, y, maxWidth, maxHeight) {
+        // Calculate scaling to fit within bounds while preserving aspect ratio
+        const imageAspect = treeImage.width / treeImage.height;
+        const boundsAspect = maxWidth / maxHeight;
+        
+        let drawWidth, drawHeight;
+        if (imageAspect > boundsAspect) {
+            // Image is wider relative to bounds
+            drawWidth = maxWidth;
+            drawHeight = maxWidth / imageAspect;
+        } else {
+            // Image is taller relative to bounds
+            drawHeight = maxHeight;
+            drawWidth = maxHeight * imageAspect;
+        }
+        
+        // Center the tree within the bounds
+        const drawX = x + (maxWidth - drawWidth) / 2;
+        const drawY = y + (maxHeight - drawHeight) / 2;
+        
+        ctx.drawImage(treeImage, drawX, drawY, drawWidth, drawHeight);
     }
 
     addNoiseOverlay(ctx, intensity) {
