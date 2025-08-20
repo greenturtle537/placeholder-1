@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TextureGenerator } from '/texture-generator.js';
+import { TextureGenerator } from './texture-generator.js';
 
 export class Skybox {
     constructor() {
