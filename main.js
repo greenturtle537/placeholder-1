@@ -4,7 +4,7 @@ import Stats from 'three/stats';
 import { LevelGenerator } from './level-generator.js';
 import { CollisionSystem } from './collision-system.js';
 import { ResourceManager } from './resource-manager.js';
-import { Tree } from '/public/objects/tree.js';
+import { Tree } from './public/objects/tree.js';
 
 /* GLOBAL VARIABLES */
 
