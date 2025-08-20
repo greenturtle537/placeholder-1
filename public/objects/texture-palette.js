@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TextureGenerator } from '/texture-generator.js';
+import { TextureGenerator } from '../../texture-generator.js';
 
 export class TexturePalette {
     constructor(texture1, texture2, texture3, texture4) {
