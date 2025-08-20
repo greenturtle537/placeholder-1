@@ -45,7 +45,8 @@ export class TextureGenerator {
                     "secondary": '#1a1a1a',
                     "accent": '#1a1a1aff',
                     "accent2": '#5c4d4dff'
-                }
+                },
+                "noiseIntensity": 50 // Default intensity for asphalt grainyness
             },
             "cloudy": {
                 "styles": ['noise'],
@@ -54,13 +55,15 @@ export class TextureGenerator {
                     "secondary": '#ffffff',
                     "accent": '#f0f8ff',
                     "accent2": 'rgba(94, 94, 94, 1)'
-                }
+                },
+                "noiseIntensity": 30 // Default intensity for cloud texture
             },
             "offpaint": {
                 "styles": ['noise'],
                 "colors": {
                     "primary": '#bebebeff'
-                }
+                },
+                "noiseIntensity": 25 // Default intensity for off-paint texture
             },
             "backdrop": {
                 "styles": ['backdrop'],
@@ -199,7 +202,7 @@ export class TextureGenerator {
                     this.generateGeometric(ctx, colors);
                     break;
                 case 'noise':
-                    this.generateNoise(ctx, colors);
+                    this.generateNoise(ctx, colors, options.noiseIntensity);
                     break;
                 case 'tiles':
                     this.generateTiles(ctx, colors);
@@ -208,7 +211,7 @@ export class TextureGenerator {
                     this.generateCarpet(ctx, colors);
                     break;
                 case 'clouds':
-                    this.generateClouds(ctx, colors);
+                    this.generateClouds(ctx, colors, options.noiseIntensity);
                     break;
                 default:
                     console.warn(`Unknown style: ${style}`);
@@ -259,22 +262,73 @@ export class TextureGenerator {
         }
     }
 
-    generateNoise(ctx, colors) {
+    generateNoise(ctx, colors, noiseIntensity = 50) {
         const primaryColor = colors.primary || colors;
         
         // Fill with base color first
         ctx.fillStyle = primaryColor;
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         
-        // Simple noise generation
+        // Calculate noise density based on texture resolution to maintain consistent graininess
+        // Higher resolution textures need proportionally more noise pixels to maintain the same visual graininess
+        const resolutionScale = this.textureSize / 256; // Base scale at 256x256
+        const noisePixelCount = Math.floor(ctx.canvas.width * ctx.canvas.height * resolutionScale * 0.8);
+        
+        // Generate noise by placing individual noisy pixels rather than modifying all pixels
+        // This maintains consistent graininess regardless of resolution
         const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
         const data = imageData.data;
-        for (let i = 0; i < data.length; i += 4) {
-            const noise = Math.random() * 50; // Adjust noise intensity
-            data[i] += noise;     // Red
-            data[i + 1] += noise; // Green
-            data[i + 2] += noise; // Blue
+        
+        for (let i = 0; i < noisePixelCount; i++) {
+            // Pick random pixel location
+            const x = Math.floor(Math.random() * ctx.canvas.width);
+            const y = Math.floor(Math.random() * ctx.canvas.height);
+            const pixelIndex = (y * ctx.canvas.width + x) * 4;
+            
+            // Apply noise with specified intensity
+            const noise = (Math.random() - 0.5) * noiseIntensity;
+            data[pixelIndex] = Math.max(0, Math.min(255, data[pixelIndex] + noise));     // Red
+            data[pixelIndex + 1] = Math.max(0, Math.min(255, data[pixelIndex + 1] + noise)); // Green
+            data[pixelIndex + 2] = Math.max(0, Math.min(255, data[pixelIndex + 2] + noise)); // Blue
+            // Alpha channel remains unchanged
         }
+        
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    generateClouds(ctx, colors, noiseIntensity = 30) {
+        // Cloud generation is essentially sophisticated noise with multiple layers
+        const primaryColor = colors.primary || '#9a9a9a';
+        const secondaryColor = colors.secondary || '#ffffff';
+        
+        // Fill with base color first  
+        ctx.fillStyle = primaryColor;
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        
+        // Create cloud-like patterns using layered noise
+        // Layer 1: Base cloud shapes
+        this.generateNoise(ctx, { primary: primaryColor }, noiseIntensity * 0.8);
+        
+        // Layer 2: Lighter cloud highlights
+        const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+        const data = imageData.data;
+        
+        // Add lighter patches for cloud highlights
+        const resolutionScale = this.textureSize / 256;
+        const highlightCount = Math.floor(ctx.canvas.width * ctx.canvas.height * resolutionScale * 0.3);
+        
+        for (let i = 0; i < highlightCount; i++) {
+            const x = Math.floor(Math.random() * ctx.canvas.width);
+            const y = Math.floor(Math.random() * ctx.canvas.height);
+            const pixelIndex = (y * ctx.canvas.width + x) * 4;
+            
+            // Add white highlights for cloud effect
+            const highlight = Math.random() * noiseIntensity * 1.5;
+            data[pixelIndex] = Math.min(255, data[pixelIndex] + highlight);     // Red
+            data[pixelIndex + 1] = Math.min(255, data[pixelIndex + 1] + highlight); // Green  
+            data[pixelIndex + 2] = Math.min(255, data[pixelIndex + 2] + highlight); // Blue
+        }
+        
         ctx.putImageData(imageData, 0, 0);
     }
 

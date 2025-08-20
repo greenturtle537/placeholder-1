@@ -4,17 +4,19 @@ import Stats from 'three/stats';
 import { LevelGenerator } from './level-generator.js';
 import { CollisionSystem } from './collision-system.js';
 import { ResourceManager } from './resource-manager.js';
+import { Tree } from '/public/objects/tree.js';
 
 /* GLOBAL VARIABLES */
 
 // Performance variables
 window.USETEXTURECACHE = false;
-Window.TEXTURECACHESIZE = 2048; //Do not go past 2048.
+Window.TEXTURECACHESIZE = 256; //Do not go past 2048.
 
 // Debug flags
 window.DEBUG_POSITION_TRACKER = true;  // Show position tracker UI
 window.DEBUG_COLLISION_MESHES = false;  // Show green collision boxes
 window.DEBUG_PLAYER_MESH = false;       // Show red player collision cylinder
+window.DEBUG_PRESERVE_POSITION = false;  // Preserve player position when toggling Q debug mode
 
 // Key mappings
 const KEYS = {
@@ -22,7 +24,7 @@ const KEYS = {
     s: 83,
     w: 87,
     d: 68,
-    q: 81,  // Added Q key for debug mode toggle
+    q: 81,  // Q key for debug mode toggle (freefly/FPS mode)
     space: 32,
     shift: 16,
     left: 37,
@@ -506,6 +508,7 @@ class threejsdemo {
                 this.posYElement = document.getElementById('pos-y');
                 this.posZElement = document.getElementById('pos-z');
                 this.cameraModeElement = document.getElementById('camera-mode');
+                this.preservePositionElement = document.getElementById('preserve-position');
                 this.collisionCountElement = document.getElementById('collision-count');
                 this.activeCollidersElement = document.getElementById('active-colliders');
                 
@@ -527,11 +530,25 @@ class threejsdemo {
                 // Update camera mode
                 this.cameraModeElement.textContent = this.debugModeActive ? 'Freefly' : 'FPS';
                 
+                // Update preserve position flag status
+                this.preservePositionElement.textContent = window.DEBUG_PRESERVE_POSITION ? 'ON' : 'OFF';
+                
                 // Update collision info
                 if (this.collisionSystem) {
                         this.collisionCountElement.textContent = this.collisionSystem.lastFrameCollisionChecks.toString();
                         this.activeCollidersElement.textContent = this.collisionSystem.colliders.length.toString();
                 }
+        }
+        
+        updateTreeBillboards() {
+                if (!this.currentLevel) return;
+                
+                // Find all tree objects in the scene and update their billboard behavior
+                this.currentLevel.traverse((object) => {
+                        if (object.name && (object.name.includes('tree') || object.name === 'tree')) {
+                                Tree.updateBillboard(object, this.camera);
+                        }
+                });
         }
         
         checkGoalReached() {
@@ -563,8 +580,13 @@ class threejsdemo {
                                 console.log("Debug: Freefly mode activated");
                         } else {
                                 console.log("Debug: FPS mode restored");
-                                // Respawn at start position when returning to FPS mode
-                                this.fpsCamera.translation_.copy(this.startPosition);
+                                // Only reset to start position if DEBUG_PRESERVE_POSITION is false
+                                if (!window.DEBUG_PRESERVE_POSITION) {
+                                        this.fpsCamera.translation_.copy(this.startPosition);
+                                        console.log("Debug: Player position reset to spawn");
+                                } else {
+                                        console.log("Debug: Player position preserved");
+                                }
                         }
                 }
                 
@@ -597,6 +619,9 @@ class threejsdemo {
                                 
                                 // Update camera with head bobbing
                                 this.fpsCamera.update(this.fixedTimeStep);
+                                
+                                // Update tree billboards to face camera
+                                this.updateTreeBillboards();
                                 
                                 // Check if goal reached
                                 this.checkGoalReached();

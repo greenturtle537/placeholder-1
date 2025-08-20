@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { TextureGenerator } from './texture-generator_old.js';
 import { ResourceManager } from './resource-manager.js';
-import { ParkingLot } from '/public/stages/parking-lot.js';
-import { TexturePalette } from '/public/objects/texture-palette.js';
-import { Skybox } from '/public/objects/skybox.js';
+import { ParkingLot } from './public/stages/parking-lot.js';
+import { TexturePalette } from './public/objects/texture-palette.js';
+import { Skybox } from './public/objects/skybox.js';
+import { Tree } from './public/objects/tree.js';
 
 export class LevelGenerator {
     constructor() {
@@ -43,6 +44,11 @@ export class LevelGenerator {
 
         // Add skybox to the level group
         levelGroup.add(skybox);
+        
+        // Add a tree 5 units away from player spawn (0, 5, 0)
+        const tree = await new Tree();
+        tree.position.set(0, 2.5, -5); // Position on ground, 5 units south of spawn
+        levelGroup.add(tree);
         
         texturePalette.position.set(0, 5, 0);
 

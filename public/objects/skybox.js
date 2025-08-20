@@ -12,7 +12,7 @@ export class Skybox {
         const group = new THREE.Group();
 
         const skyTexture = await this.textureGenerator.generateTexture("cloudy");
-        skyTexture.repeat.set( 4, 4 );
+        skyTexture.repeat.set( 2, 2 );
         
         const geometry = new THREE.BoxGeometry( 1000, 1000, 1000 );
         const material = new THREE.MeshBasicMaterial( { map: skyTexture, side: THREE.BackSide } );
@@ -21,6 +21,8 @@ export class Skybox {
         skybox.name = "skybox";
         group.add( skybox );
 
+        // TEMPORARILY COMMENTED OUT - Tree backdrop code (unrealistic trees)
+        /*
         // Add backdrop element around the sides only, 200 units high
         const backdropTexture = await this.textureGenerator.generateTexture("backdrop");
         backdropTexture.repeat.set(5, 1);
@@ -66,6 +68,7 @@ export class Skybox {
         westBackdrop.rotation.y = Math.PI/2;
         westBackdrop.name = "backdrop_west";
         group.add(westBackdrop);
+        */
 
         return group;
     }
