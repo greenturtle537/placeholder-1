@@ -446,7 +446,7 @@ class threejsdemo {
                         console.log("Loading level...");
                         
                         // Load and generate the level
-                        await this.loadLevel('/public/levels/level1.json');
+                        await this.loadLevel('./public/levels/level1.json');
                         
                         console.log("Level loaded, compiling shaders and assets...");
                         
