@@ -1,29 +1,37 @@
 import * as THREE from 'three';
 
 export class Tree {
+    // Static cache for tree images - shared across all instances
+    static treeImages = [];
+    static imagesLoaded = false;
+    static loadingPromise = null;
+    
     constructor() {
-        this.treeImages = [];
-        
         return this.createTree();
     }
 
     async createTree() {
-        // Load all available tree images
-        await this.loadTreeImages();
+        // Ensure tree images are loaded (only loads once)
+        await Tree.ensureImagesLoaded();
         
-        if (this.treeImages.length === 0) {
+        if (Tree.treeImages.length === 0) {
             console.warn('No tree images could be loaded, creating default tree');
             return this.createDefaultTree();
         }
         
-        // Select a random tree image
-        const randomTreeImage = this.treeImages[Math.floor(Math.random() * this.treeImages.length)];
+        // Select a random tree image from the static cache
+        const randomTreeImage = Tree.treeImages[Math.floor(Math.random() * Tree.treeImages.length)];
         
         // Create texture from the selected tree image
         const texture = new THREE.Texture(randomTreeImage);
         texture.needsUpdate = true;
         texture.wrapS = THREE.ClampToEdgeWrapping;
         texture.wrapT = THREE.ClampToEdgeWrapping;
+        
+        // Set pixel-perfect filtering for pixel art - no anti-aliasing
+        texture.magFilter = THREE.NearestFilter; // No interpolation when scaling up
+        texture.minFilter = THREE.NearestFilter; // No interpolation when scaling down
+        texture.generateMipmaps = false; // Disable mipmaps to maintain pixel sharpness
         
         // Create billboard material (always faces camera)
         const material = new THREE.MeshBasicMaterial({
@@ -33,8 +41,26 @@ export class Tree {
             side: THREE.FrontSide
         });
         
-        // Create 5x5 unit plane geometry
-        const geometry = new THREE.PlaneGeometry(5, 5);
+        // Note: Texture filtering set to NearestFilter above to preserve pixel art appearance
+        // This prevents anti-aliasing/blurring when trees are scaled up or down
+        
+        // Add subtle color variation to each tree
+        const colorVariation = 0.2; // 20% color variation
+        const hue = 0.3 + (Math.random() - 0.5) * colorVariation; // Green hue with variation
+        const saturation = 0.6 + (Math.random() - 0.5) * 0.3; // Saturation variation
+        const lightness = 0.7 + (Math.random() - 0.5) * 0.3; // Lightness variation
+        
+        const color = new THREE.Color();
+        color.setHSL(hue, saturation, lightness);
+        material.color = color;
+        
+        // Create 5x5 unit plane geometry with some random variation
+        const baseSize = 5;
+        const sizeVariation = 1 + (Math.random() - 0.5) * 0.4; // 20% size variation
+        const width = baseSize * sizeVariation;
+        const height = baseSize * (0.8 + Math.random() * 0.4); // Aspect ratio variation
+        
+        const geometry = new THREE.PlaneGeometry(width, height);
         
         // Create the mesh
         const treeMesh = new THREE.Mesh(geometry, material);
@@ -55,7 +81,27 @@ export class Tree {
         return treeGroup;
     }
     
-    async loadTreeImages() {
+    // Static method to ensure images are loaded only once
+    static async ensureImagesLoaded() {
+        // If already loaded, return immediately
+        if (Tree.imagesLoaded) {
+            return;
+        }
+        
+        // If currently loading, wait for the existing promise
+        if (Tree.loadingPromise) {
+            return Tree.loadingPromise;
+        }
+        
+        // Start loading images
+        Tree.loadingPromise = Tree.loadTreeImages();
+        await Tree.loadingPromise;
+        Tree.imagesLoaded = true;
+        Tree.loadingPromise = null;
+    }
+    
+    // Static method to load tree images (called only once)
+    static async loadTreeImages() {
         const imagePromises = [];
         
         // Load all tree images (tree_1.png through tree_10.png)
@@ -64,19 +110,19 @@ export class Tree {
             const promise = new Promise((resolve, reject) => {
                 img.onload = () => resolve(img);
                 img.onerror = () => {
-                    console.warn(`Failed to load tree_${i}.png`);
+                    console.warn(`Failed to load tree${i}.png`);
                     resolve(null); // Resolve with null instead of rejecting
                 };
             });
-            img.src = `public/backdrop/tree_${i}.png`;
+            img.src = `public/backdrop/tree${i}.png`;
             imagePromises.push(promise);
         }
         
         const results = await Promise.all(imagePromises);
-        this.treeImages = results.filter(img => img !== null);
+        Tree.treeImages = results.filter(img => img !== null);
         
-        if (this.treeImages.length > 0) {
-            console.log(`Loaded ${this.treeImages.length} tree images`);
+        if (Tree.treeImages.length > 0) {
+            console.log(`Loaded ${Tree.treeImages.length} tree images to static cache`);
         }
     }
     

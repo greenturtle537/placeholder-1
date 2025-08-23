@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TextureGenerator } from './../texture-generator.js';
+import { TextureGenerator } from '../../texture-generator.js';
 
 export class ParkingLot {
     constructor() {
@@ -62,7 +62,7 @@ export class ParkingLot {
         group.add(ground);
 
         // Add invisible collision walls to create 500x500 boundary box around spawn
-        const boundarySize = 500;
+        const boundarySize = 250;
         const wallHeight = 50; // Height of invisible walls
         const wallThickness = 1; // Thickness of collision walls
         

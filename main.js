@@ -157,7 +157,7 @@ class InputController {
 }
 
 class FirstPersonCamera {
-    constructor(camera, objects, collisionSystem) {
+    constructor(camera, objects, collisionSystem, levelLoadedCallback) {
         this.camera_ = camera;
         this.input_ = new InputController();
         this.rotation_ = new THREE.Quaternion();
@@ -175,6 +175,7 @@ class FirstPersonCamera {
         this.bobIntensity_ = 0.1;
         this.collisionSystem_ = collisionSystem; // Collision detection system
         this.freeflyMode_ = false; // Track camera mode
+        this.levelLoadedCallback_ = levelLoadedCallback; // Function to check if level is loaded
         
         // Speed control for freefly mode
         this.freeflySpeedMultiplier_ = 1.0;
@@ -226,7 +227,8 @@ class FirstPersonCamera {
     }
 
     update(timeElapsedS) {
-        if (!document.pointerLockElement) {
+        // Don't update if level is not loaded yet or pointer is not locked
+        if (!document.pointerLockElement || (this.levelLoadedCallback_ && !this.levelLoadedCallback_())) {
             return;
         }
         
@@ -373,6 +375,10 @@ class threejsdemo {
                 // Debug flag
                 this.debug = true;
                 
+                // Level loading state
+                this.levelLoaded = false;
+                this.levelLoading = false;
+                
                 // Create scene
                 this.scene = new THREE.Scene();
                 this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -430,11 +436,55 @@ class threejsdemo {
                 // Initialize debug position tracker
                 this.setupDebugPositionTracker();
                 
-                // Load and generate the level
-                this.loadLevel('/public/levels/level1.json');
-
-                
-
+                // Start loading level asynchronously
+                this.initializeLevel();
+        }
+        
+        async initializeLevel() {
+                try {
+                        this.levelLoading = true;
+                        console.log("Loading level...");
+                        
+                        // Load and generate the level
+                        await this.loadLevel('/public/levels/level1.json');
+                        
+                        console.log("Level loaded, compiling shaders and assets...");
+                        
+                        // Pre-compile all shaders and materials for smooth rendering
+                        await this.compileScene();
+                        
+                        this.levelLoaded = true;
+                        this.levelLoading = false;
+                        console.log("Level loaded successfully, shaders compiled, controls enabled");
+                        
+                        // Start animation loop now that level is loaded
+                        if (this.previousRAF === null) {
+                                this.animate();
+                        }
+                } catch (error) {
+                        console.error("Failed to initialize level:", error);
+                        this.levelLoading = false;
+                }
+        }
+        
+        async compileScene() {
+                return new Promise((resolve) => {
+                        console.log("Pre-compiling shaders and materials...");
+                        
+                        // Use WebGLRenderer.compile to pre-compile all shaders and materials
+                        // This eliminates stutters during gameplay when new materials are first rendered
+                        this.renderer.compile(this.scene, this.camera);
+                        
+                        // Also force a single render pass to ensure everything is compiled
+                        this.renderer.render(this.scene, this.camera);
+                        
+                        console.log("Shader compilation complete");
+                        
+                        // Use requestAnimationFrame to ensure compilation is fully complete
+                        requestAnimationFrame(() => {
+                                resolve();
+                        });
+                });
         }
         
         async loadLevel(levelFile) {
@@ -471,10 +521,7 @@ class threejsdemo {
                         // Log collision statistics
                         this.collisionSystem.logCollisionStats();
                         
-                        // Start animation loop if not already running
-                        if (this.previousRAF === null) {
-                                this.animate();
-                        }
+                        console.log("Level setup complete");
                 } catch (error) {
                         console.error("Failed to load level:", error);
                 }
@@ -493,12 +540,21 @@ class threejsdemo {
         }
         
         setupControls() {
-                // Create the custom FPS camera controller with collision system
-                this.fpsCamera = new FirstPersonCamera(this.camera, null, this.collisionSystem);
+                // Create the custom FPS camera controller with collision system and level loading check
+                this.fpsCamera = new FirstPersonCamera(
+                    this.camera, 
+                    null, 
+                    this.collisionSystem,
+                    () => this.levelLoaded // Callback to check if level is loaded
+                );
                 
                 // Add basic lighting if no level is loaded yet
                 const ambient = new THREE.AmbientLight(0xffffff, 0.5);
                 this.scene.add(ambient);
+                
+                // Add basic fog
+                this.scene.fog = new THREE.Fog( 0xcccccc, 100, 800 );
+
         }
         
         setupDebugPositionTracker() {
@@ -520,6 +576,23 @@ class threejsdemo {
         
         updateDebugPositionTracker() {
                 if (!window.DEBUG_POSITION_TRACKER || !this.debugPositionElement) return;
+                
+                // Show loading status
+                if (this.levelLoading && !this.levelLoaded) {
+                        this.posXElement.textContent = "Loading...";
+                        this.posYElement.textContent = "Loading...";
+                        this.posZElement.textContent = "Loading...";
+                        this.cameraModeElement.textContent = "Loading";
+                        return;
+                }
+                
+                if (!this.levelLoaded) {
+                        this.posXElement.textContent = "Waiting...";
+                        this.posYElement.textContent = "Waiting...";
+                        this.posZElement.textContent = "Waiting...";
+                        this.cameraModeElement.textContent = "Waiting";
+                        return;
+                }
                 
                 // Update position display
                 const pos = this.camera.position;
@@ -614,17 +687,20 @@ class threejsdemo {
                         
                         // Update at fixed intervals for consistent physics
                         while (this.timeAccumulator >= this.fixedTimeStep) {
-                                // Check for debug mode toggle
-                                this.checkDebugModeToggle();
-                                
-                                // Update camera with head bobbing
-                                this.fpsCamera.update(this.fixedTimeStep);
-                                
-                                // Update tree billboards to face camera
-                                this.updateTreeBillboards();
-                                
-                                // Check if goal reached
-                                this.checkGoalReached();
+                                // Only update game logic if level is loaded
+                                if (this.levelLoaded) {
+                                        // Check for debug mode toggle
+                                        this.checkDebugModeToggle();
+                                        
+                                        // Update camera with head bobbing
+                                        this.fpsCamera.update(this.fixedTimeStep);
+                                        
+                                        // Update tree billboards to face camera
+                                        this.updateTreeBillboards();
+                                        
+                                        // Check if goal reached
+                                        this.checkGoalReached();
+                                }
                                 
                                 this.timeAccumulator -= this.fixedTimeStep;
                         }
