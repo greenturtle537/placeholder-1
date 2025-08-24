@@ -110,15 +110,15 @@ export class TextureGenerator {
             textureKey += `_${JSON.stringify(options)}`;
         }
         
-        console.log(`Requesting texture: ${textureKey}`);
+        if (window.DEBUG_LOG) console.log(`Requesting texture: ${textureKey}`);
 
         // Get or create the canvas
         let canvas;
         if (TextureGenerator.#canvasCache[textureKey]) {
-            console.log(`Using cached texture canvas: ${textureKey}`);
+            if (window.DEBUG_LOG) console.log(`Using cached texture canvas: ${textureKey}`);
             canvas = TextureGenerator.#canvasCache[textureKey];
         } else {
-            console.log(`Generating new texture canvas: ${textureKey}`);
+            if (window.DEBUG_LOG) console.log(`Generating new texture canvas: ${textureKey}`);
             canvas = this.createTextureCanvas(styles, colors, options);
             // Store only the canvas in the cache
             TextureGenerator.#canvasCache[textureKey] = canvas;
@@ -139,15 +139,15 @@ export class TextureGenerator {
     async generateBackdropTexture(colors, depth = 3) {
         const textureKey = `backdrop_${JSON.stringify(colors)}_${depth}`;
         
-        console.log(`Requesting backdrop texture: ${textureKey}`);
+        if (window.DEBUG_LOG) console.log(`Requesting backdrop texture: ${textureKey}`);
 
         // Get or create the canvas
         let canvas;
         if (TextureGenerator.#canvasCache[textureKey]) {
-            console.log(`Using cached backdrop texture canvas: ${textureKey}`);
+            if (window.DEBUG_LOG) console.log(`Using cached backdrop texture canvas: ${textureKey}`);
             canvas = TextureGenerator.#canvasCache[textureKey];
         } else {
-            console.log(`Generating new backdrop texture canvas: ${textureKey}`);
+            if (window.DEBUG_LOG) console.log(`Generating new backdrop texture canvas: ${textureKey}`);
             canvas = await this.createBackdropCanvas(colors, depth);
             // Store only the canvas in the cache
             TextureGenerator.#canvasCache[textureKey] = canvas;
@@ -512,17 +512,17 @@ export class TextureGenerator {
         const treeImages = [];
         const imagePromises = [];
         
-        // Load all tree images (tree_1.png through tree_10.png)
-        for (let i = 1; i <= 10; i++) {
+        // Load all tree images (tree1.png through tree13.png)
+        for (let i = 1; i <= 13; i++) {
             const img = new Image();
             const promise = new Promise((resolve, reject) => {
                 img.onload = () => resolve(img);
                 img.onerror = () => {
-                    console.warn(`Failed to load tree_${i}.png`);
+                    console.warn(`Failed to load tree${i}.png`);
                     resolve(null); // Resolve with null instead of rejecting
                 };
             });
-            img.src = `public/backdrop/tree_${i}.png`;
+            img.src = `public/backdrop/tree${i}.png`;
             imagePromises.push(promise);
         }
         

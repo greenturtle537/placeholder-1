@@ -5,6 +5,11 @@ import { LevelGenerator } from './level-generator.js';
 import { CollisionSystem } from './collision-system.js';
 import { ResourceManager } from './resource-manager.js';
 import { Tree } from './public/objects/tree.js';
+import { FirstPersonCamera } from './first-person-camera.js';
+import { KEYS } from './input-controller.js';
+import { DebugSystem } from './debug-system.js';
+import { GameEngine } from './game-engine.js';
+import { LoadingScreen } from './loading-screen.js';
 
 /* GLOBAL VARIABLES */
 
@@ -17,358 +22,7 @@ window.DEBUG_POSITION_TRACKER = true;  // Show position tracker UI
 window.DEBUG_COLLISION_MESHES = false;  // Show green collision boxes
 window.DEBUG_PLAYER_MESH = false;       // Show red player collision cylinder
 window.DEBUG_PRESERVE_POSITION = false;  // Preserve player position when toggling Q debug mode
-
-// Key mappings
-const KEYS = {
-    a: 65,
-    s: 83,
-    w: 87,
-    d: 68,
-    q: 81,  // Q key for debug mode toggle (freefly/FPS mode)
-    space: 32,
-    shift: 16,
-    left: 37,
-    up: 38,
-    right: 39,
-    down: 40,
-    ctrl: 17,
-    plus: 187,      // + key for speed increase
-    minus: 189,     // - key for speed decrease
-    numpadPlus: 107,    // Numpad + key
-    numpadMinus: 109,   // Numpad - key
-};
-
-function clamp(x, a, b) {
-    return Math.min(Math.max(x, a), b);
-}
-
-class InputController {
-    constructor(target) {
-        this.target_ = target || document;
-        this.initialize_();
-    }
-
-    initialize_() {
-        this.current_ = {
-            leftButton: false,
-            rightButton: false,
-            mouseXDelta: 0,
-            mouseYDelta: 0,
-            mouseX: 0,
-            mouseY: 0,
-        };
-        this.previous_ = null;
-        this.keys_ = {};
-        this.previousKeys_ = {};
-        this.target_.addEventListener("click", (e) => this.onClick_(e), false);
-        this.target_.addEventListener("mousedown", (e) => this.onMouseDown_(e), false);
-        this.target_.addEventListener("mousemove", (e) => this.onMouseMove_(e), false);
-        this.target_.addEventListener("mouseup", (e) => this.onMouseUp_(e), false);
-        this.target_.addEventListener("keydown", (e) => this.onKeyDown_(e), false);
-        this.target_.addEventListener("keyup", (e) => this.onKeyUp_(e), false);
-    }
-
-    onClick_(e) {
-        const canvas = document.querySelector("canvas");
-        const promise = canvas.requestPointerLock({
-            unadjustedMovement: true,
-        });
-
-        if (!promise) {
-            console.log("disabling mouse acceleration is not supported");
-            return;
-        }
-
-        return promise
-            .then(() => console.log("pointer is locked"))
-            .catch((error) => {
-                if (error.name === "NotSupportedError") {
-                    // Some platforms may not support unadjusted movement.
-                    // You can request again a regular pointer lock.
-                    return canvas.requestPointerLock();
-                }
-            });
-    }
-
-    onMouseMove_(e) {
-        this.current_.mouseX = e.screenX;
-        this.current_.mouseY = e.screenY;
-
-        if (this.previous_ === null) {
-            this.previous_ = { ...this.current_ };
-        }
-        this.current_.mouseXDelta = e.movementX;
-        this.current_.mouseYDelta = e.movementY;
-    }
-
-    onMouseDown_(e) {
-        this.onMouseMove_(e);
-
-        switch (e.button) {
-            case 0: {
-                this.current_.leftButton = true;
-                break;
-            }
-            case 2: {
-                this.current_.rightButton = true;
-                break;
-            }
-        }
-    }
-
-    onMouseUp_(e) {
-        this.onMouseMove_(e);
-
-        switch (e.button) {
-            case 0: {
-                this.current_.leftButton = false;
-                break;
-            }
-            case 2: {
-                this.current_.rightButton = false;
-                break;
-            }
-        }
-    }
-
-    onKeyDown_(e) {
-        this.keys_[e.keyCode] = true;
-    }
-
-    onKeyUp_(e) {
-        this.keys_[e.keyCode] = false;
-    }
-
-    key(keyCode) {
-        return !!this.keys_[keyCode];
-    }
-
-    isReady() {
-        return this.previous_ !== null;
-    }
-
-    update(_) {
-        if (this.previous_ !== null) {
-            this.current_.mouseXDelta = this.current_.mouseX - this.previous_.mouseX;
-            this.current_.mouseYDelta = this.current_.mouseY - this.previous_.mouseY;
-            this.previous_ = { ...this.current_ };
-        }
-    }
-}
-
-class FirstPersonCamera {
-    constructor(camera, objects, collisionSystem, levelLoadedCallback) {
-        this.camera_ = camera;
-        this.input_ = new InputController();
-        this.rotation_ = new THREE.Quaternion();
-        this.translation_ = new THREE.Vector3(0, 0, 0);
-        this.phi_ = 0;
-        this.phiSpeed_ = 8;
-        this.theta_ = 0;
-        this.thetaSpeed_ = 5;
-        this.headBobActive_ = false;
-        this.headBobTimer_ = 0;
-        this.objects_ = objects || [];
-        this.forwardSpeed_ = 2;
-        this.strafeSpeed_ = 2;
-        this.verticalSpeed_ = 2; // Added for freefly mode
-        this.bobIntensity_ = 0.1;
-        this.collisionSystem_ = collisionSystem; // Collision detection system
-        this.freeflyMode_ = false; // Track camera mode
-        this.levelLoadedCallback_ = levelLoadedCallback; // Function to check if level is loaded
-        
-        // Speed control for freefly mode
-        this.freeflySpeedMultiplier_ = 1.0;
-        this.minSpeedMultiplier_ = 0.1;
-        this.maxSpeedMultiplier_ = 1000.0;
-        this.speedIncrement_ = 1;
-        this.plusKeyPressed_ = false;
-        this.minusKeyPressed_ = false;
-    }
-
-    // Toggle between FPS and freefly mode
-    toggleFreeflyMode(enabled) {
-        this.freeflyMode_ = enabled;
-        // Reset speed multiplier when entering freefly mode
-        if (enabled) {
-            this.freeflySpeedMultiplier_ = 10.0;
-            console.log("Freefly speed: 1.0x (use +/- keys to adjust)");
-        }
-    }
-
-    // Handle speed control in freefly mode
-    updateFreeflySpeedControl_() {
-        if (!this.freeflyMode_) return;
-
-        const plusPressed = this.input_.key(KEYS.plus) || this.input_.key(KEYS.numpadPlus);
-        const minusPressed = this.input_.key(KEYS.minus) || this.input_.key(KEYS.numpadMinus);
-
-        // Increase speed on + key press (not hold)
-        if (plusPressed && !this.plusKeyPressed_) {
-            this.freeflySpeedMultiplier_ = Math.min(
-                this.freeflySpeedMultiplier_ + this.speedIncrement_,
-                this.maxSpeedMultiplier_
-            );
-            console.log(`Freefly speed: ${this.freeflySpeedMultiplier_.toFixed(1)}x`);
-        }
-
-        // Decrease speed on - key press (not hold)
-        if (minusPressed && !this.minusKeyPressed_) {
-            this.freeflySpeedMultiplier_ = Math.max(
-                this.freeflySpeedMultiplier_ - this.speedIncrement_,
-                this.minSpeedMultiplier_
-            );
-            console.log(`Freefly speed: ${this.freeflySpeedMultiplier_.toFixed(1)}x`);
-        }
-
-        // Update key states
-        this.plusKeyPressed_ = plusPressed;
-        this.minusKeyPressed_ = minusPressed;
-    }
-
-    update(timeElapsedS) {
-        // Don't update if level is not loaded yet or pointer is not locked
-        if (!document.pointerLockElement || (this.levelLoadedCallback_ && !this.levelLoadedCallback_())) {
-            return;
-        }
-        
-        // Update speed control for freefly mode
-        this.updateFreeflySpeedControl_();
-        
-        this.updateRotation_(timeElapsedS);
-        this.updateTranslation_(timeElapsedS);
-
-        // Only apply head bob in FPS mode
-        if (!this.freeflyMode_) {
-            this.updateHeadBob_(timeElapsedS);
-        }
-
-        this.updateCamera_(timeElapsedS);
-        this.input_.update(timeElapsedS);
-    }
-
-    updateCamera_(_) {
-        this.camera_.quaternion.copy(this.rotation_);
-        this.camera_.position.copy(this.translation_);
-
-        // Only apply head bob in FPS mode
-        if (!this.freeflyMode_) {
-            this.camera_.position.y += Math.sin(this.headBobTimer_ * 10) * this.bobIntensity_;
-        }
-
-        // Update collision system with new player position, only in FPS mode
-        if (this.collisionSystem_ && !this.freeflyMode_) {
-            this.collisionSystem_.updatePlayerPosition(this.camera_.position, this.freeflyMode_);
-        }
-    }
-
-    updateHeadBob_(timeElapsedS) {
-        if (this.headBobActive_) {
-            const wavelength = Math.PI;
-            const nextStep = 1 + Math.floor(((this.headBobTimer_ + 0.000001) * 10) / wavelength);
-            const nextStepTime = (nextStep * wavelength) / 10;
-            this.headBobTimer_ = Math.min(
-                this.headBobTimer_ + timeElapsedS,
-                nextStepTime,
-            );
-
-            if (this.headBobTimer_ == nextStepTime) {
-                this.headBobActive_ = false;
-            }
-        }
-    }
-
-    updateTranslation_(timeElapsedS) {
-        const forwardVelocity =
-            (this.input_.key(KEYS.w) ? 1 : 0) + (this.input_.key(KEYS.s) ? -1 : 0);
-        const strafeVelocity =
-            (this.input_.key(KEYS.a) ? 1 : 0) + (this.input_.key(KEYS.d) ? -1 : 0);
-
-        // Vertical movement in freefly mode
-        const verticalVelocity = this.freeflyMode_ ?
-            (this.input_.key(KEYS.space) ? 1 : 0) + (this.input_.key(KEYS.shift) ? -1 : 0) : 0;
-
-        const qx = new THREE.Quaternion();
-        qx.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.phi_);
-
-        // Apply speed multiplier in freefly mode
-        const currentForwardSpeed = this.freeflyMode_ ? 
-            this.forwardSpeed_ * this.freeflySpeedMultiplier_ : this.forwardSpeed_;
-        const currentStrafeSpeed = this.freeflyMode_ ? 
-            this.strafeSpeed_ * this.freeflySpeedMultiplier_ : this.strafeSpeed_;
-        const currentVerticalSpeed = this.freeflyMode_ ? 
-            this.verticalSpeed_ * this.freeflySpeedMultiplier_ : this.verticalSpeed_;
-
-        const forward = new THREE.Vector3(0, 0, -1);
-        forward.applyQuaternion(qx);
-        forward.multiplyScalar(forwardVelocity * timeElapsedS * currentForwardSpeed);
-
-        const left = new THREE.Vector3(-1, 0, 0);
-        left.applyQuaternion(qx);
-        left.multiplyScalar(strafeVelocity * timeElapsedS * currentStrafeSpeed);
-
-        // Add vertical movement for freefly mode
-        const up = new THREE.Vector3(0, 1, 0);
-        up.multiplyScalar(verticalVelocity * timeElapsedS * currentVerticalSpeed);
-
-        // Store current position for collision check
-        const currentPosition = this.translation_.clone();
-        
-        // Calculate proposed new position
-        const proposedPosition = currentPosition.clone();
-        proposedPosition.add(forward);
-        proposedPosition.add(left);
-
-        if (this.freeflyMode_) {
-            // In freefly mode, just apply movement with no collisions
-            proposedPosition.add(up);
-            this.translation_.copy(proposedPosition);
-        } else {
-            // In FPS mode, check collisions
-            if (this.collisionSystem_) {
-                const adjustedPosition = this.collisionSystem_.checkCollisions(
-                    currentPosition,
-                    proposedPosition
-                );
-
-                // Update with collision-adjusted position
-                this.translation_.copy(adjustedPosition);
-            } else {
-                // No collision system, just update normally
-                this.translation_.add(forward);
-                this.translation_.add(left);
-            }
-        }
-
-        if ((forwardVelocity != 0 || strafeVelocity != 0) && !this.freeflyMode_) {
-            this.headBobActive_ = true;
-        }
-
-    }
-
-    updateRotation_(timeElapsedS) {
-        const xh = this.input_.current_.mouseXDelta / window.innerWidth;
-        const yh = this.input_.current_.mouseYDelta / window.innerHeight;
-
-        this.phi_ += -xh * this.phiSpeed_;
-        this.theta_ = clamp(
-            this.theta_ + -yh * this.thetaSpeed_,
-            -Math.PI / 3,
-            Math.PI / 3,
-        );
-
-        const qx = new THREE.Quaternion();
-        qx.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.phi_);
-        const qz = new THREE.Quaternion();
-        qz.setFromAxisAngle(new THREE.Vector3(1, 0, 0), this.theta_);
-
-        const q = new THREE.Quaternion();
-        q.multiply(qx);
-        q.multiply(qz);
-
-        this.rotation_.copy(q);
-    }
-}
+window.DEBUG_LOG = true;  // Control console log output for status and debug messages
 
 class threejsdemo {
         constructor() {
@@ -379,30 +33,18 @@ class threejsdemo {
                 this.levelLoaded = false;
                 this.levelLoading = false;
                 
-                // Create scene
-                this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                // Initialize game engine (handles renderer, scene, camera, stats)
+                this.gameEngine = new GameEngine();
                 
-                // Create renderer using best available option
-                if (WebGL.isWebGL2Available()) {
-                    this.renderer = new THREE.WebGLRenderer({ 
-                        antialias: true,
-                        powerPreference: 'high-performance' 
-                    });
-                    console.log("Using WebGL2 renderer");
-                } else {
-                    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-                    console.log("Using WebGL1 renderer");
-                }
-                
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.shadowMap.enabled = true;
-                document.body.appendChild(this.renderer.domElement);
-                
-                // Set up stats
-                this.stats = new Stats();
-                this.stats.dom.style.position = 'absolute';
-                document.body.appendChild(this.stats.dom);
+                // Get references from game engine
+                this.scene = this.gameEngine.scene;
+                this.camera = this.gameEngine.camera;
+                this.renderer = this.gameEngine.renderer;
+                this.stats = this.gameEngine.stats;
+                this.clock = this.gameEngine.clock;
+                this.previousRAF = this.gameEngine.previousRAF;
+                this.fixedTimeStep = this.gameEngine.fixedTimeStep;
+                this.timeAccumulator = this.gameEngine.timeAccumulator;
                 
                 // Create level generator instance
                 this.levelGenerator = new LevelGenerator();
@@ -410,21 +52,8 @@ class threejsdemo {
                 // Create collision system with debug flags
                 this.collisionSystem = new CollisionSystem(this.scene);
                 
-                // For performance tracking
-                this.stats.addPanel(new Stats.Panel('FPS', '#0ff', '#002'));
-                this.stats.showPanel(0);
-                
                 // Set up custom FPS controls with head bobbing
                 this.setupControls();
-                
-                // Handle resize
-                window.addEventListener('resize', () => this.onWindowResize());
-                
-                // Time tracking for animation
-                this.clock = new THREE.Clock();
-                this.previousRAF = null;
-                this.fixedTimeStep = 1/60; // 60 FPS physics
-                this.timeAccumulator = 0;
                 
                 // Resource manager for cleanup
                 this.resourceManager = new ResourceManager();
@@ -433,8 +62,23 @@ class threejsdemo {
                 this.debugModeActive = false;
                 this.qKeyPressed = false;
                 
-                // Initialize debug position tracker
-                this.setupDebugPositionTracker();
+                // Camera initialization sequence state
+                this.cameraInitializing = false;
+                this.cameraInitComplete = false;
+                this.initRotationAngle = 0;
+                this.initStartTime = 0;
+                this.initPauseTime = 10; // 10 milliseconds pause between rotations
+                this.initRotationStep = 45; // 45 degrees per step
+                this.initTotalRotations = 360 / this.initRotationStep; // 8 steps total
+                this.initCurrentStep = 0;
+                this.initCameraStartPosition = null;
+                
+                // Initialize debug system
+                this.debugSystem = new DebugSystem();
+                
+                // Initialize loading screen
+                this.loadingScreen = new LoadingScreen();
+                this.loadingScreen.setProgress(0, "Initializing engine...");
                 
                 // Start loading level asynchronously
                 this.initializeLevel();
@@ -443,19 +87,26 @@ class threejsdemo {
         async initializeLevel() {
                 try {
                         this.levelLoading = true;
-                        console.log("Loading level...");
+                        this.loadingScreen.setProgress(10, "Loading level assets...");
+                        if (window.DEBUG_LOG) console.log("Loading level...");
                         
                         // Load and generate the level
                         await this.loadLevel('./public/levels/level1.json');
                         
-                        console.log("Level loaded, compiling shaders and assets...");
+                        this.loadingScreen.setProgress(60, "Compiling shaders and materials...");
+                        if (window.DEBUG_LOG) console.log("Level loaded, compiling shaders and assets...");
                         
                         // Pre-compile all shaders and materials for smooth rendering
                         await this.compileScene();
                         
+                        // Start camera initialization sequence
+                        this.loadingScreen.setProgress(80, "Initializing camera system...");
+                        if (window.DEBUG_LOG) console.log("Starting camera initialization sequence...");
+                        this.startCameraInitialization();
+                        
                         this.levelLoaded = true;
                         this.levelLoading = false;
-                        console.log("Level loaded successfully, shaders compiled, controls enabled");
+                        if (window.DEBUG_LOG) console.log("Level loaded successfully, shaders compiled, controls enabled");
                         
                         // Start animation loop now that level is loaded
                         if (this.previousRAF === null) {
@@ -463,28 +114,13 @@ class threejsdemo {
                         }
                 } catch (error) {
                         console.error("Failed to initialize level:", error);
+                        this.loadingScreen.setProgress(0, "Error loading level - Check console");
                         this.levelLoading = false;
                 }
         }
         
         async compileScene() {
-                return new Promise((resolve) => {
-                        console.log("Pre-compiling shaders and materials...");
-                        
-                        // Use WebGLRenderer.compile to pre-compile all shaders and materials
-                        // This eliminates stutters during gameplay when new materials are first rendered
-                        this.renderer.compile(this.scene, this.camera);
-                        
-                        // Also force a single render pass to ensure everything is compiled
-                        this.renderer.render(this.scene, this.camera);
-                        
-                        console.log("Shader compilation complete");
-                        
-                        // Use requestAnimationFrame to ensure compilation is fully complete
-                        requestAnimationFrame(() => {
-                                resolve();
-                        });
-                });
+                return this.gameEngine.compileScene();
         }
         
         async loadLevel(levelFile) {
@@ -521,7 +157,7 @@ class threejsdemo {
                         // Log collision statistics
                         this.collisionSystem.logCollisionStats();
                         
-                        console.log("Level setup complete");
+                        if (window.DEBUG_LOG) console.log("Level setup complete");
                 } catch (error) {
                         console.error("Failed to load level:", error);
                 }
@@ -534,7 +170,7 @@ class threejsdemo {
                                 this.collisionSystem.addCollider(object);
                         } else if (object.isMesh && object.userData.noCollision) {
                                 // Log skipped objects for debugging
-                                console.log(`Skipping collision for ${object.userData.reason || 'unmarked'} object`);
+                                if (window.DEBUG_LOG) console.log(`Skipping collision for ${object.userData.reason || 'unmarked'} object`);
                         }
                 });
         }
@@ -575,42 +211,14 @@ class threejsdemo {
         }
         
         updateDebugPositionTracker() {
-                if (!window.DEBUG_POSITION_TRACKER || !this.debugPositionElement) return;
-                
-                // Show loading status
-                if (this.levelLoading && !this.levelLoaded) {
-                        this.posXElement.textContent = "Loading...";
-                        this.posYElement.textContent = "Loading...";
-                        this.posZElement.textContent = "Loading...";
-                        this.cameraModeElement.textContent = "Loading";
-                        return;
-                }
-                
-                if (!this.levelLoaded) {
-                        this.posXElement.textContent = "Waiting...";
-                        this.posYElement.textContent = "Waiting...";
-                        this.posZElement.textContent = "Waiting...";
-                        this.cameraModeElement.textContent = "Waiting";
-                        return;
-                }
-                
-                // Update position display
-                const pos = this.camera.position;
-                this.posXElement.textContent = pos.x.toFixed(2);
-                this.posYElement.textContent = pos.y.toFixed(2);
-                this.posZElement.textContent = pos.z.toFixed(2);
-                
-                // Update camera mode
-                this.cameraModeElement.textContent = this.debugModeActive ? 'Freefly' : 'FPS';
-                
-                // Update preserve position flag status
-                this.preservePositionElement.textContent = window.DEBUG_PRESERVE_POSITION ? 'ON' : 'OFF';
-                
-                // Update collision info
-                if (this.collisionSystem) {
-                        this.collisionCountElement.textContent = this.collisionSystem.lastFrameCollisionChecks.toString();
-                        this.activeCollidersElement.textContent = this.collisionSystem.colliders.length.toString();
-                }
+                this.debugSystem.updateDebugPositionTracker(
+                    this.camera,
+                    this.levelLoading,
+                    this.levelLoaded,
+                    this.debugModeActive,
+                    this.collisionSystem,
+                    this.cameraInitializing
+                );
         }
         
         updateTreeBillboards() {
@@ -624,12 +232,104 @@ class threejsdemo {
                 });
         }
         
+        startCameraInitialization() {
+                this.cameraInitializing = true;
+                this.cameraInitComplete = false;
+                this.initCurrentStep = 0;
+                this.initRotationAngle = 0;
+                this.initStartTime = Date.now();
+                
+                // Pause player input during initialization
+                if (this.fpsCamera) {
+                        this.fpsCamera.pauseInput(true);
+                }
+                
+                // Store the starting position for restoration later
+                this.initCameraStartPosition = this.camera.position.clone();
+                
+                // Set camera to look directly along horizon (0 pitch)
+                this.camera.rotation.set(0, 0, 0);
+                
+                if (window.DEBUG_LOG) console.log("Camera initialization: Starting 360° horizon scan...");
+        }
+        
+        updateCameraInitialization() {
+                if (!this.cameraInitializing || this.cameraInitComplete) return;
+                
+                const currentTime = Date.now();
+                const timeSinceLastRotation = currentTime - this.initStartTime;
+                
+                // Check if enough time has passed for the next rotation
+                if (timeSinceLastRotation >= this.initPauseTime) {
+                        // Perform the next rotation step
+                        this.initRotationAngle = (this.initCurrentStep * this.initRotationStep) * (Math.PI / 180);
+                        this.camera.rotation.y = this.initRotationAngle;
+                        
+                        // Force a render to compile shaders for this view angle
+                        this.gameEngine.render();
+                        
+                        // Update loading screen progress (80% + 20% for camera init)
+                        const cameraProgress = (this.initCurrentStep / this.initTotalRotations) * 20;
+                        const totalProgress = 80 + cameraProgress;
+                        const degrees = (this.initRotationAngle * 180 / Math.PI).toFixed(0);
+                        this.loadingScreen.setProgress(totalProgress, `Scanning environment... ${degrees}°`);
+                        
+                        this.initCurrentStep++;
+                        this.initStartTime = currentTime;
+                        
+                        if (window.DEBUG_LOG) {
+                                console.log(`Camera initialization: Rotation step ${this.initCurrentStep}/${this.initTotalRotations} (${degrees}°)`);
+                        }
+                        
+                        // Check if we've completed the full rotation
+                        if (this.initCurrentStep >= this.initTotalRotations) {
+                                this.completeCameraInitialization();
+                        }
+                }
+        }
+        
+        completeCameraInitialization() {
+                this.cameraInitializing = false;
+                this.cameraInitComplete = true;
+                
+                // Complete loading screen and show click to start
+                this.loadingScreen.setProgress(100, "Loading Complete!");
+                this.loadingScreen.showClickToStart(() => {
+                        this.startGame();
+                });
+                
+                if (window.DEBUG_LOG) console.log("Camera initialization complete - waiting for user to start");
+        }
+
+        startGame() {
+                // Hide loading screen
+                this.loadingScreen.hide();
+                
+                // Re-enable player input
+                if (this.fpsCamera) {
+                        this.fpsCamera.pauseInput(false);
+                }
+                
+                // Reset camera rotation to face forward (0 degrees)
+                this.camera.rotation.set(0, 0, 0);
+                
+                // Restore the FPS camera's internal state to match
+                if (this.fpsCamera) {
+                        this.fpsCamera.phi_ = 0;
+                        this.fpsCamera.theta_ = 0;
+                        this.fpsCamera.rotation_.set(0, 0, 0, 1); // Reset quaternion
+                        this.fpsCamera.translation_.copy(this.initCameraStartPosition);
+                }
+                
+                if (window.DEBUG_LOG) console.log("Game started - player controls enabled");
+        }
+        
         checkGoalReached() {
                 if (!this.goalPosition) return false;
                 
                 const distance = this.camera.position.distanceTo(this.goalPosition);
                 if (distance < 1.5) {
-                        console.log("Goal reached!");
+                        if (window.DEBUG_LOG) console.log("Goal reached!");
                         return true;
                 }
                 return false;
@@ -650,15 +350,15 @@ class threejsdemo {
                         this.fpsCamera.toggleFreeflyMode(this.debugModeActive);
                         
                         if (this.debugModeActive) {
-                                console.log("Debug: Freefly mode activated");
+                                if (window.DEBUG_LOG) console.log("Debug: Freefly mode activated");
                         } else {
-                                console.log("Debug: FPS mode restored");
+                                if (window.DEBUG_LOG) console.log("Debug: FPS mode restored");
                                 // Only reset to start position if DEBUG_PRESERVE_POSITION is false
                                 if (!window.DEBUG_PRESERVE_POSITION) {
                                         this.fpsCamera.translation_.copy(this.startPosition);
-                                        console.log("Debug: Player position reset to spawn");
+                                        if (window.DEBUG_LOG) console.log("Debug: Player position reset to spawn");
                                 } else {
-                                        console.log("Debug: Player position preserved");
+                                        if (window.DEBUG_LOG) console.log("Debug: Player position preserved");
                                 }
                         }
                 }
@@ -668,9 +368,7 @@ class threejsdemo {
         }
         
         onWindowResize() {
-                this.camera.aspect = window.innerWidth / window.innerHeight;
-                this.camera.updateProjectionMatrix();
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.gameEngine.onWindowResize();
         }
         
         animate() {
@@ -689,17 +387,23 @@ class threejsdemo {
                         while (this.timeAccumulator >= this.fixedTimeStep) {
                                 // Only update game logic if level is loaded
                                 if (this.levelLoaded) {
-                                        // Check for debug mode toggle
-                                        this.checkDebugModeToggle();
-                                        
-                                        // Update camera with head bobbing
-                                        this.fpsCamera.update(this.fixedTimeStep);
-                                        
-                                        // Update tree billboards to face camera
-                                        this.updateTreeBillboards();
-                                        
-                                        // Check if goal reached
-                                        this.checkGoalReached();
+                                        // Handle camera initialization sequence (prevents player input)
+                                        if (this.cameraInitializing) {
+                                                this.updateCameraInitialization();
+                                        } else if (this.cameraInitComplete) {
+                                                // Normal game logic only after camera initialization is complete
+                                                // Check for debug mode toggle
+                                                this.checkDebugModeToggle();
+                                                
+                                                // Update camera with head bobbing
+                                                this.fpsCamera.update(this.fixedTimeStep);
+                                                
+                                                // Update tree billboards to face camera
+                                                this.updateTreeBillboards();
+                                                
+                                                // Check if goal reached
+                                                this.checkGoalReached();
+                                        }
                                 }
                                 
                                 this.timeAccumulator -= this.fixedTimeStep;
@@ -712,7 +416,7 @@ class threejsdemo {
                         this.updateDebugPositionTracker();
                         
                         // Render the scene
-                        this.renderer.render(this.scene, this.camera);
+                        this.gameEngine.render();
                         
                         this.previousRAF = t;
                         this.animate();
@@ -724,23 +428,8 @@ class threejsdemo {
                 // Dispose resources
                 this.resourceManager.dispose();
                 
-                // Clean up event listeners
-                window.removeEventListener('resize', this.onWindowResize);
-                
-                // Dispose renderer
-                if (this.renderer) {
-                        this.renderer.dispose();
-                }
-                
-                // Clear scene
-                if (this.scene) {
-                        this.scene.traverse(object => {
-                                if (object.isMesh) {
-                                        if (object.geometry) object.geometry.dispose();
-                                        if (object.material) object.material.dispose();
-                                }
-                        });
-                }
+                // Dispose game engine
+                this.gameEngine.dispose();
         }
 }
 
@@ -754,7 +443,7 @@ if (WebGL.isWebGL2Available()) {
     });
 } else if (WebGL.isWebGLAvailable()) {
     // WebGL1 is available as fallback - limited functionality
-    console.log("WebGL2 not available, falling back to WebGL1");
+    if (window.DEBUG_LOG) console.log("WebGL2 not available, falling back to WebGL1");
     
     // Create warning but wait until after DOM content loaded to add it
     window.addEventListener("DOMContentLoaded", () => {

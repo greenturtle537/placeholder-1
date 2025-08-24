@@ -74,7 +74,7 @@ export class CollisionSystem {
         // Check userData for explicit collision exclusion
         if (mesh.userData.noCollision) {
             this.stats.skippedUserData++;
-            console.log(`Skipping collision for mesh: ${mesh.userData.reason || 'userData.noCollision = true'}`);
+            if (window.DEBUG_LOG) console.log(`Skipping collision for mesh: ${mesh.userData.reason || 'userData.noCollision = true'}`);
             return;
         }
         
@@ -91,13 +91,13 @@ export class CollisionSystem {
         
         if (size.x < minSize || size.y < minSize || size.z < minSize) {
             this.stats.skippedTooSmall++;
-            console.log(`Skipping collision for too small object (${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)})`);
+            if (window.DEBUG_LOG) console.log(`Skipping collision for too small object (${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)})`);
             return;
         }
         
         if (size.x > maxSize || size.y > maxSize || size.z > maxSize) {
             this.stats.skippedTooLarge++;
-            console.log(`Skipping collision for too large object (${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)})`);
+            if (window.DEBUG_LOG) console.log(`Skipping collision for too large object (${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)})`);
             return;
         }
         
@@ -275,13 +275,15 @@ export class CollisionSystem {
      * Log collision system statistics
      */
     logCollisionStats() {
-        console.log('=== Collision System Statistics ===');
-        console.log(`Total meshes processed: ${this.stats.totalMeshesProcessed}`);
-        console.log(`Colliders added: ${this.stats.collidersAdded}`);
-        console.log(`Skipped (userData): ${this.stats.skippedUserData}`);
-        console.log(`Skipped (too small): ${this.stats.skippedTooSmall}`);
-        console.log(`Skipped (too large): ${this.stats.skippedTooLarge}`);
-        console.log('=====================================');
+        if (window.DEBUG_LOG) {
+            console.log('=== Collision System Statistics ===');
+            console.log(`Total meshes processed: ${this.stats.totalMeshesProcessed}`);
+            console.log(`Colliders added: ${this.stats.collidersAdded}`);
+            console.log(`Skipped (userData): ${this.stats.skippedUserData}`);
+            console.log(`Skipped (too small): ${this.stats.skippedTooSmall}`);
+            console.log(`Skipped (too large): ${this.stats.skippedTooLarge}`);
+            console.log('=====================================');
+        }
     }
     
     /**

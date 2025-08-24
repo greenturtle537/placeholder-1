@@ -106,7 +106,7 @@ export class LevelGenerator {
             levelGroup.add(tree);
         }
         
-        console.log(`Created forest ring with ${numTrees} trees`);
+        if (window.DEBUG_LOG) console.log(`Created forest ring with ${numTrees} trees`);
     }
 
     addLighting(levelGroup, levelData) {

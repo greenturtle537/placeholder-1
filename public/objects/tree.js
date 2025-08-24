@@ -104,7 +104,7 @@ export class Tree {
     static async loadTreeImages() {
         const imagePromises = [];
         
-        // Load all tree images (tree_1.png through tree_10.png)
+        // Load all tree images (tree1.png through tree13.png)
         for (let i = 1; i <= 10; i++) {
             const img = new Image();
             const promise = new Promise((resolve, reject) => {
@@ -122,7 +122,7 @@ export class Tree {
         Tree.treeImages = results.filter(img => img !== null);
         
         if (Tree.treeImages.length > 0) {
-            console.log(`Loaded ${Tree.treeImages.length} tree images to static cache`);
+            if (window.DEBUG_LOG) console.log(`Loaded ${Tree.treeImages.length} tree images to static cache`);
         }
     }
     
@@ -145,7 +145,7 @@ export class Tree {
         treeGroup.name = "tree_default";
         treeGroup.userData.billboardMesh = treeMesh;
         
-        console.log('Created default tree fallback');
+        if (window.DEBUG_LOG) console.log('Created default tree fallback');
         return treeGroup;
     }
     
